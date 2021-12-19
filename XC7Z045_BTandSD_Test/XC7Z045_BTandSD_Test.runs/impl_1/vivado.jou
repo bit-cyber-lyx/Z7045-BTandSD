@@ -1,0 +1,12 @@
+#-----------------------------------------------------------
+# Vivado v2019.1 (64-bit)
+# SW Build 2552052 on Fri May 24 14:49:42 MDT 2019
+# IP Build 2548770 on Fri May 24 18:01:18 MDT 2019
+# Start of session at: Mon Oct 25 14:03:07 2021
+# Process ID: 4236
+# Current directory: C:/Users/86188/Desktop/XC7Z045_BTandSD_Test/XC7Z045_BTandSD_Test/XC7Z045_BTandSD_Test.runs/impl_1
+# Command line: vivado.exe -log project_wrapper.vdi -applog -product Vivado -messageDb vivado.pb -mode batch -source project_wrapper.tcl -notrace
+# Log file: C:/Users/86188/Desktop/XC7Z045_BTandSD_Test/XC7Z045_BTandSD_Test/XC7Z045_BTandSD_Test.runs/impl_1/project_wrapper.vdi
+# Journal file: C:/Users/86188/Desktop/XC7Z045_BTandSD_Test/XC7Z045_BTandSD_Test/XC7Z045_BTandSD_Test.runs/impl_1\vivado.jou
+#-----------------------------------------------------------
+source project_wrapper.tcl -notrace

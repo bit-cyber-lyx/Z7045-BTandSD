@@ -1,0 +1,270 @@
+/***************************** Include Files *********************************/
+#include "xgpiops.h"
+#include "xuartps.h"
+#include "xparameters.h"
+#include "xparameters_ps.h"
+#include "xplatform_info.h"
+#include "xscugic.h"
+#include "xil_exception.h"
+#include "xil_printf.h"
+#include "sleep.h"
+
+/****************************  Define  ***************************************/
+//GIC
+#define GIC_DEVICE_ID		XPAR_SCUGIC_SINGLE_DEVICE_ID
+//GPIO
+#define GPIO_DEVICE_ID      XPAR_XGPIOPS_0_DEVICE_ID
+//UART
+#define UART_DEVICE_ID		XPAR_XUARTPS_0_DEVICE_ID
+#define UART_IRPT_INTR		XPAR_XUARTPS_0_INTR
+//other
+#define INPUT       0
+#define OUTPUT      1
+#define BCTS        54		//数据接收请求
+#define BRTS        55		//数据发送请求
+#define BROADCAST   56		//广播指示
+#define LINK        57		//链路指示
+#define EN          58		//蓝牙模块使能
+#define RES         59		//蓝牙模块复位
+#define OE          60		//电平转换使能
+#define BufferSize  512     //发送和接收buffer大小
+
+
+/*********************** Driver Instance Definitions *************************/
+static XScuGic gicInstance;
+static XGpioPs psGpioInstance;
+static XUartPs psUartInstance;
+
+/************************** Variable Definitions *****************************/
+static u8 SendBuffer[BufferSize];	/* Buffer for Transmitting Data */
+static u8 RecvBuffer[BufferSize];	/* Buffer for Receiving Data */
+static u8 DataBuffer[51200];        //数据存储Buffer大小
+static u32 bcts_flag, brts_flag, broadcast_flag, link_flag;   //接收信号,广播指示,链路指示标志
+static u32 data_cnt;
+
+
+//PsGpio初始化
+static int PsGpioInit(XGpioPs * InstancePtr, u16 DeviceID)
+{
+    int Status;
+	XGpioPs_Config* GpioConfigPtr;
+    GpioConfigPtr = XGpioPs_LookupConfig(DeviceID);
+	if(GpioConfigPtr == NULL){
+		return XST_FAILURE;
+    }
+	Status = XGpioPs_CfgInitialize(InstancePtr,GpioConfigPtr, GpioConfigPtr->BaseAddr);
+	if(XST_SUCCESS != Status){
+		return XST_FAILURE;
+	}
+    return XST_SUCCESS;
+}
+
+//Uart初始化
+static int PsUartInit(XUartPs * InstancePtr, u16 DeviceID)
+{
+    int Status;
+	XUartPs_Config *UartConfigPtr;
+	UartConfigPtr = XUartPs_LookupConfig(DeviceID);
+	if (UartConfigPtr == NULL) {
+		return XST_FAILURE;
+	}
+	Status = XUartPs_CfgInitialize(InstancePtr, UartConfigPtr, UartConfigPtr->BaseAddress);
+	if(XST_SUCCESS != Status){
+		return XST_FAILURE;
+	}
+	XUartPs_SetOperMode(InstancePtr, XUARTPS_OPER_MODE_NORMAL);
+	XUartPs_SetRecvTimeout(InstancePtr, 16);
+	XUartPs_Recv(InstancePtr, RecvBuffer, BufferSize); 	//开始接收
+    return XST_SUCCESS;
+}
+
+//Gic初始化
+static int GicInit(XScuGic * InstancePtr, u16 DeviceID)
+{
+    int Status;
+    XScuGic_Config *GicConfigPtr;
+    GicConfigPtr = XScuGic_LookupConfig(DeviceID);
+    if (GicConfigPtr == NULL) {
+		return XST_FAILURE;
+	}
+    Status = XScuGic_CfgInitialize(InstancePtr, GicConfigPtr, GicConfigPtr->CpuBaseAddress);
+    if(Status != XST_SUCCESS){
+        return XST_FAILURE;
+    }
+    return XST_SUCCESS;
+}
+
+//中断处理函数
+static void UartIntrHandler(void * CallBackRef)
+{
+	XUartPs  * Uart = (XUartPs *)CallBackRef;
+	int length;              //接收数据长度
+	int data_length;         //有效数据长度，与协议有关
+	int file_type = 0;           //文件类型 0-->未知类型;1-->图片;2-->文本;3-->自定义
+	int check_sum_flag;     //帧校验和标志
+	u8 check_sum;            //帧校验和
+	u32 IsrStatus;
+	IsrStatus = XUartPs_ReadReg(Uart->Config.BaseAddress,XUARTPS_IMR_OFFSET);
+	IsrStatus &= XUartPs_ReadReg(Uart->Config.BaseAddress,XUARTPS_ISR_OFFSET);  //获取中断类型
+	//超时中断
+	if((IsrStatus & XUARTPS_IXR_TOUT) != (u32)0){    //超时中断
+		length = BufferSize - Uart->ReceiveBuffer.RemainingBytes; //接收Buffer接收到的数据长度为BufferSize - Uart->ReceiveBuffer.RemainingBytes
+		if (length > 0){
+
+			//串口打印完整数据
+			for(int i = 0; i < length; i++){
+				xil_printf("%c",RecvBuffer[i]);
+			}
+			xil_printf("\n");
+
+			//确定传输类型
+			if(RecvBuffer[0] == 0xA0){       //图片
+				file_type = 1;
+			}
+			else if(RecvBuffer[0] == 0xA1){  //文本
+				file_type = 2;
+			}
+			else if(RecvBuffer[0] == 0xA2){  //自定义数据
+				file_type = 3;
+			}
+			else{
+				file_type = 0;
+			}
+
+			if(file_type > 0){
+				//校验数据
+				check_sum = RecvBuffer[0];
+				for(int i = 1; i < length - 1; i++){
+					check_sum = check_sum ^ RecvBuffer[i];
+				}
+				if(check_sum == RecvBuffer[length-1]){
+					check_sum_flag = 1;
+				}
+				else{
+					check_sum_flag = 0;
+				}
+				if(check_sum_flag == 0){
+					xil_printf("Check sum failed, please send again！\n");
+				}
+				else{
+					//确定有效数据长度
+					if(file_type > 0){
+						data_length = RecvBuffer[1];
+					}
+
+					//数据Buffer存储有效数据
+					for(int i = 2; i < data_length; i++){
+						DataBuffer[data_cnt] = RecvBuffer[i];
+						data_cnt++;
+					}
+
+					if(data_length != 0xF8){ //当有效数据长度不是0xF8时,data_cnt置为0,暂时没有考虑数据长度是0xF8倍数的问题
+						xil_printf("data_length:%c\n",data_length);
+						if(data_cnt > 0 && file_type > 0){
+							if(file_type == 1){
+								xil_printf("Recv picture complete!\n");
+
+							}
+							else if(file_type == 2){
+								xil_printf("Recv txt complete!\n");
+
+							}
+							else if(file_type == 3){
+
+								xil_printf("Recv data complete!\n");
+							}
+						}
+
+
+
+						data_cnt = 0;
+					}
+				}
+			}
+
+		}
+	}
+	else  //接收缓冲区满中断
+	{
+		for(int i = 0; i < BufferSize; i++){
+			xil_printf("%c\n",RecvBuffer[i]);
+		}
+	}
+	//重新开始接收数据
+	XUartPs_Recv(CallBackRef, RecvBuffer, BufferSize);
+}
+
+//主函数入口
+int main()
+{
+    u32 Status;
+    //--------------------------GPIO-------------------------------
+    xil_printf("********BT TEST********\r\n");
+    /* Initialize MIO & EMIO. */
+    Status = PsGpioInit(&psGpioInstance, GPIO_DEVICE_ID);
+    if(Status == XST_SUCCESS){
+        xil_printf("********GPIO Initial SUCCESS!********\r\n");
+    }else{
+        xil_printf("********GPIO Initial FAILED!********\r\n");
+    }
+	//设置EMIO方向
+	XGpioPs_SetDirectionPin(&psGpioInstance, BCTS, INPUT);		//BCTS,数据输入信号,输入,低有效
+	XGpioPs_SetDirectionPin(&psGpioInstance, BRTS, OUTPUT);        //BRTS,数据发送请求,输出,低有效
+	XGpioPs_SetDirectionPin(&psGpioInstance, BROADCAST, INPUT);		//P04,广播指示,输入,低有效
+	XGpioPs_SetDirectionPin(&psGpioInstance, LINK, INPUT);		//P05,链路指示,输入,低有效
+	XGpioPs_SetDirectionPin(&psGpioInstance, EN, OUTPUT);		//P06,模块使能,输出,低有效
+	XGpioPs_SetDirectionPin(&psGpioInstance, RES, OUTPUT);		//RES,复位,输出,低有效
+	XGpioPs_SetDirectionPin(&psGpioInstance, OE, OUTPUT);		//OE,电平转换使能,输出,高有效
+	//使能EMIO输出
+	XGpioPs_SetOutputEnablePin(&psGpioInstance, BRTS, 1);		//使能BRTS
+	XGpioPs_SetOutputEnablePin(&psGpioInstance, EN, 1);		//使能蓝牙模块
+	//XGpioPs_SetOutputEnablePin(&psGpioInstance, RES, 1);		//使能RES
+	XGpioPs_SetOutputEnablePin(&psGpioInstance, OE, 1);		//电平转换使能
+
+    //使能电平转化
+	XGpioPs_WritePin(&psGpioInstance, EN, 0);				//蓝牙模块使能
+	XGpioPs_WritePin(&psGpioInstance, BRTS, 0);				//数据发送请求
+	XGpioPs_WritePin(&psGpioInstance, OE, 1);				//电平转换使能
+	//------------------------------UART---------------------------------------
+    Status = PsUartInit(&psUartInstance, UART_DEVICE_ID);
+    if(Status == XST_SUCCESS){
+		xil_printf("********Uart Initial SUCCESS! ********\r\n");
+	}else{
+		xil_printf("********Uart Initial FAILED! ********\r\n");
+	}
+
+    //------------------------------GIC----------------------------------------
+    Status = GicInit(&gicInstance, GIC_DEVICE_ID);
+    if(Status == XST_SUCCESS){
+        xil_printf("********GIC Initial SUCCESS! ********\r\n");
+    }else{
+        xil_printf("********GIC Initial FAILED! ********\r\n");
+    }
+
+    //----------------------------INTERRUPT------------------------------------
+    //Exception Registration
+    Xil_ExceptionInit();
+    Xil_ExceptionRegisterHandler(XIL_EXCEPTION_ID_INT,
+                                (Xil_ExceptionHandler) XScuGic_InterruptHandler,
+                                (void *) &gicInstance);
+
+    //Connect the handler to GIC
+    XScuGic_Connect(&gicInstance, UART_IRPT_INTR,
+    						(Xil_InterruptHandler) XUartPs_InterruptHandler,
+    						(void *) &psUartInstance);
+    XUartPs_SetHandler(&psUartInstance, (XUartPs_Handler)UartIntrHandler, &psUartInstance);
+    XUartPs_SetInterruptMask(&psUartInstance, XUARTPS_IXR_TOUT|XUARTPS_IXR_RXFULL);   //接收超时中断和接收缓冲区满中断
+    //Enable Interrupt
+    XUartPs_EnableUart(&psUartInstance);
+    XScuGic_Enable(&gicInstance, UART_IRPT_INTR);
+    Xil_ExceptionEnable();
+
+	XUartPs_Recv(&psUartInstance, RecvBuffer, BufferSize);
+	while(1){
+		brts_flag = XGpioPs_ReadPin(&psGpioInstance, BRTS);		//接收信号指示
+		bcts_flag = XGpioPs_ReadPin(&psGpioInstance, BCTS);		//接收信号指示
+		broadcast_flag = XGpioPs_ReadPin(&psGpioInstance, BROADCAST);  //广播指示
+		link_flag = XGpioPs_ReadPin(&psGpioInstance, LINK);		//链路指示
+	}
+    return 0;
+}

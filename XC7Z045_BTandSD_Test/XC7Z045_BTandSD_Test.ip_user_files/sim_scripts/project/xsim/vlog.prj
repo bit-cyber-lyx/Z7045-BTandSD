@@ -1,0 +1,7 @@
+verilog xil_defaultlib --include "../../../../XC7Z045_BTandSD_Test.srcs/sources_1/bd/project/ipshared/ec67/hdl" --include "../../../../XC7Z045_BTandSD_Test.srcs/sources_1/bd/project/ipshared/8c62/hdl" --include "../../../../XC7Z045_BTandSD_Test.srcs/sources_1/bd/project/ip/project_processing_system7_0_0" \
+"../../../bd/project/ip/project_processing_system7_0_0/sim/project_processing_system7_0_0.v" \
+"../../../bd/project/sim/project.v" \
+
+verilog xil_defaultlib "glbl.v"
+
+nosort

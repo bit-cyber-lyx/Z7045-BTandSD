@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<section name="Workbench">
+	<item value="project_wrapper_hw_platform_0" key="programflash.hwplatform"/>
+	<item value="true" key="project_wrapper_hw_platform_0-verifyFlash"/>
+	<item value="true" key="project_wrapper_hw_platform_0-blankCheck"/>
+	<item value="Auto Detect" key="project_wrapper_hw_platform_0-device"/>
+	<item value="C:\Users\86188\Desktop\XC7Z045_BTandSD_Test\XC7Z045_BTandSD_Test\XC7Z045_BTandSD_Test.sdk\fsbl\Debug\fsbl.elf" key="project_wrapper_hw_platform_0-fsblFile"/>
+	<item value="Local" key="project_wrapper_hw_platform_0-target"/>
+	<item value="C:\Users\86188\Desktop\XC7Z045_BTandSD_Test\XC7Z045_BTandSD_Test\XC7Z045_BTandSD_Test.sdk\BTandSD_Test\bootimage\BOOT.bin" key="project_wrapper_hw_platform_0-imgFile"/>
+	<item value="0" key="project_wrapper_hw_platform_0-offSet"/>
+	<item value="qspi-x4-single" key="project_wrapper_hw_platform_0-flashType"/>
+</section>

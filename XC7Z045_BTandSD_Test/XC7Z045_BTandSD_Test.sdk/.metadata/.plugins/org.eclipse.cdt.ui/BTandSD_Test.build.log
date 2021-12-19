@@ -1,0 +1,8 @@
+14:29:48 **** Incremental Build of configuration Debug for project BTandSD_Test ****
+make pre-build main-build 
+a9-linaro-pre-build-step
+' '
+make: Nothing to be done for 'main-build'.
+
+14:29:48 Build Finished (took 327ms)
+

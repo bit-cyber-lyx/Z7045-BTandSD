@@ -1,0 +1,7 @@
+//arch = zynq; split = false; format = MCS
+the_ROM_image:
+{
+	[bootloader]C:\Users\86188\Desktop\XC7Z045_BTandSD_Test\XC7Z045_BTandSD_Test\XC7Z045_BTandSD_Test.sdk\fsbl\Debug\fsbl.elf
+	C:\Users\86188\Desktop\XC7Z045_BTandSD_Test\XC7Z045_BTandSD_Test\XC7Z045_BTandSD_Test.sdk\project_wrapper_hw_platform_0\project_wrapper.bit
+	C:\Users\86188\Desktop\XC7Z045_BTandSD_Test\XC7Z045_BTandSD_Test\XC7Z045_BTandSD_Test.sdk\BTandSD_Test\Debug\BTandSD_Test.elf
+}
